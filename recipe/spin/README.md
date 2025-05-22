@@ -1,6 +1,6 @@
 # SPIN: Self-Play Fine-Tuning Converts Weak Language Models to Strong Language Models (verl Recipe)
 
-This repository hosts a `verl` recipe inspired by the paper **"Self-Play Fine-Tuning Converts Weak Language Models to Strong Language Models"** (SPIN). The implementation uses an **Online Direct Preference Optimization (Online DPO)** approach for language model alignment. This method allows a model to iteratively improve its capabilities by learning from preferences generated using its own outputs, potentially reducing reliance on external preference datasets or stronger teacher models.
+This repository hosts a `verl` recipe inspired by the paper **"Self-Play Fine-Tuning Converts Weak Language Models to Strong Language Models"** (SPIN).  SPIN allows a model to iteratively improve its capabilities through two-player games and synthetic data generation. The implementation uses an **Online Direct Preference Optimization (Online DPO)** approach for language model alignment, leveraging the `compute_online_dpo_loss` function. While the mechanisms behind SPIN and Online DPO differ, SPIN's training objective becomes similar to Online DPO when using a logistic loss objective function, making Online DPO a suitable framework for realizing SPIN's self-improvement philosophy while integrating seamlessly with existing training infrastructure.
 
 Paper Authors: [Zixiang Chen](https://github.com/uclaml/SPIN)\*, [Yihe Deng](https://github.com/uclaml/SPIN)\*, [Huizhuo Yuan](https://scholar.google.com/citations?user=8foZzX4AAAAJ)\*, [Kaixuan Ji](https://scholar.google.com/citations?user=FOoKDukAAAAJ), [Quanquan Gu](https://web.cs.ucla.edu/~qgu/)
 
@@ -8,25 +8,21 @@ verl Implementation Authors: [Chendong Wang](https://cdwang96.github.io/), [Chen
 
 [[Webpage](https://uclaml.github.io/SPIN/)] [[Huggingface](https://huggingface.co/papers/2401.01335)] [[Paper](https://arxiv.org/abs/2401.01335)] [[Original Implementation](https://github.com/uclaml/SPIN)]
 
-## Algorithm: Online DPO Inspired by SPIN
+## Algorithm: SPIN-Inspired Self-Improvement via Online DPO
 
-This recipe implements an Online DPO algorithm adapted to the `verl` Reinforcement Learning framework, drawing inspiration from concepts presented in SPIN. It provides an alternative to PPO for fine-tuning language models.
+This recipe implements the SPIN philosophy of iterative self-improvement using an Online DPO algorithm adapted to the `verl` Reinforcement Learning framework. It provides an alternative to PPO for fine-tuning language models.
 
-**Core Idea:** Instead of maximizing a scalar reward signal, this approach directly optimizes the policy model to align with preference data generated *online* during training:
+**Core Idea (SPIN Philosophy):** SPIN enables iterative self-improvement through a self-play mechanism inspired by game theory, where models learn by playing against themselves:
 
-1.  **Generation:** The current policy model (actor) generates two (or more) responses for each prompt in a batch.
-2.  **Preference Labeling:** A reward model or reward function evaluates these generated responses to determine which one is preferred (chosen) and which is dispreferred (rejected).
-3.  **Update:** This preference tuple (`prompt`, `chosen_response`, `rejected_response`) is used to update the actor model using the DPO loss function, comparing against a reference model.
+1.  **Synthetic Data Generation:** The current model generates responses, creating its own training data from previous iterations.
+2.  **Two-Player Game Setup:** A game involving two players acted by a single LLM.
+3.  **Iterative Training:** The model progressively improves by refining its policy, with each iteration's model becoming the opponent for the next iteration.
 
-**Connection to SPIN:**
-While this recipe uses the DPO loss, the online generation loop where the current model generates data used for its own update shares conceptual similarities with the self-play idea in SPIN. The periodic update of the reference model (potentially using weights from the actor) further aligns with SPIN's iterative self-improvement concepts.
+**Implementation via Online DPO:** 
+This recipe realizes the SPIN philosophy through Online DPO by generating multiple responses, creating preference pairs (via reward models or implicit labeling), and using DPO loss to drive the iterative improvement process.
 
-**Reference Papers:**
-* **SPIN:** [Self-Play Fine-Tuning Converts Weak Language Models to Strong Language Models](https://arxiv.org/abs/2401.01335) (Chen et al., 2024)
-* **DPO:** [Direct Preference Optimization: Your Language Model is Secretly a Reward Model](https://arxiv.org/abs/2305.18290) (Rafailov et al., 2023)
-
-## Implementation within verl 
-The recipe is expected to be working on verl v0.3.0.post1
+## Implementation within Verl 
+The recipe is expected to work on Verl v0.3.0.post1
 
 This implementation adapts the existing PPO infrastructure provided by `verl`:
 
@@ -43,13 +39,13 @@ The following steps outline how to set up the environment and run the SPIN recip
 1.  **Setup Environment (Example using Docker):**
     ```bash
     # Start a container with GPU access and shared memory
-    docker run -it --name spin_test --gpus all \
-        --shm-size=32g \
-        --ipc=host \
-        -v /path/to/host/.cache:/root/.cache \
-        -e HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN> \
-        lmsysorg/sglang:latest \
-        /bin/bash
+    # docker run -it --name spin_test --gpus all \
+    #     --shm-size=32g \
+    #     --ipc=host \
+    #     -v /path/to/host/.cache:/root/.cache \
+    #     -e HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN> \
+    #     lmsysorg/sglang:latest \
+    #     /bin/bash
 
     # Inside the container or on your host machine:
     # Ensure /tmp is writable
@@ -57,9 +53,9 @@ The following steps outline how to set up the environment and run the SPIN recip
     chmod 1777 /tmp
 
     # Install Python 3.10 (if not present) and venv
-    sudo apt update
-    sudo apt install -y python3.10 python3.10-venv tmux
-    python3 -m ensurepip --upgrade
+    # sudo apt update
+    # sudo apt install -y python3.10 python3.10-venv tmux
+    # python3 -m ensurepip --upgrade
 
     # Create and activate a virtual environment
     python3 -m venv ~/.python/spin_env
@@ -73,7 +69,7 @@ The following steps outline how to set up the environment and run the SPIN recip
     ```bash
     # Clone the verl repository and checkout the spin branch
     cd ~
-    git clone git@github.com:volcengine/verl.git](git@github.com:volcengine/verl.git) && cd verl
+    git clone https://github.com/volcengine/verl.git && cd verl
 
     # Install flash-attn (handle potential build issues)
     python3 -m uv pip install wheel packaging
