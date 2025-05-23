@@ -1,6 +1,12 @@
 # SPIN: Self-Play Fine-Tuning Converts Weak Language Models to Strong Language Models (verl Recipe)
 
-This repository hosts a `verl` recipe inspired by the paper **"Self-Play Fine-Tuning Converts Weak Language Models to Strong Language Models"** (SPIN). The implementation uses an **Online Direct Preference Optimization (Online DPO)** approach for language model alignment. This method allows a model to iteratively improve its capabilities by learning from preferences generated using its own outputs, potentially reducing reliance on external preference datasets or stronger teacher models.
+This repository hosts a `verl` recipe inspired by the paper **"Self-Play Fine-Tuning Converts Weak Language Models to Strong Language Models"** (SPIN). SPIN is a language model alignment algorithm that enables iterative self-improvement through a self-play mechanism inspired by game theory.
+
+**Core Idea:** Models learn by playing against themselves, reducing reliance on external preference datasets or stronger teacher models:
+
+1. **Synthetic Data Generation:** The current model generates responses, creating its own training data from previous iterations.
+2. **Two-Player Game Setup:** A game involving two players acted by a single LLM.
+3. **Iterative Training:** The model progressively improves by refining its policy, with each iteration's model becoming the opponent for the next iteration.
 
 Paper Authors: [Zixiang Chen](https://github.com/uclaml/SPIN)\*, [Yihe Deng](https://github.com/uclaml/SPIN)\*, [Huizhuo Yuan](https://scholar.google.com/citations?user=8foZzX4AAAAJ)\*, [Kaixuan Ji](https://scholar.google.com/citations?user=FOoKDukAAAAJ), [Quanquan Gu](https://web.cs.ucla.edu/~qgu/)
 
@@ -8,27 +14,10 @@ verl Implementation Authors: [Chendong Wang](https://cdwang96.github.io/), [Chen
 
 [[Webpage](https://uclaml.github.io/SPIN/)] [[Huggingface](https://huggingface.co/papers/2401.01335)] [[Paper](https://arxiv.org/abs/2401.01335)] [[Original Implementation](https://github.com/uclaml/SPIN)]
 
-## Algorithm: Online DPO Inspired by SPIN
+##  Key Function: 
+While the mechanisms behind SPIN and Online DPO differ, SPIN's training objective is the same as Online DPO when using a logistic loss objective function. Therefore, we first developed the **`compute_online_dpo_loss`** function, then built this SPIN recipe on top of it. 
 
-This recipe implements an Online DPO algorithm adapted to the `verl` Reinforcement Learning framework, drawing inspiration from concepts presented in SPIN. It provides an alternative to PPO for fine-tuning language models.
-
-**Core Idea:** Instead of maximizing a scalar reward signal, this approach directly optimizes the policy model to align with preference data generated *online* during training:
-
-1.  **Generation:** The current policy model (actor) generates two (or more) responses for each prompt in a batch.
-2.  **Preference Labeling:** A reward model or reward function evaluates these generated responses to determine which one is preferred (chosen) and which is dispreferred (rejected).
-3.  **Update:** This preference tuple (`prompt`, `chosen_response`, `rejected_response`) is used to update the actor model using the DPO loss function, comparing against a reference model.
-
-**Connection to SPIN:**
-While this recipe uses the DPO loss, the online generation loop where the current model generates data used for its own update shares conceptual similarities with the self-play idea in SPIN. The periodic update of the reference model (potentially using weights from the actor) further aligns with SPIN's iterative self-improvement concepts.
-
-**Reference Papers:**
-* **SPIN:** [Self-Play Fine-Tuning Converts Weak Language Models to Strong Language Models](https://arxiv.org/abs/2401.01335) (Chen et al., 2024)
-* **DPO:** [Direct Preference Optimization: Your Language Model is Secretly a Reward Model](https://arxiv.org/abs/2305.18290) (Rafailov et al., 2023)
-
-## Implementation within verl 
-The recipe is expected to be working on verl v0.3.0.post1
-
-This implementation adapts the existing PPO infrastructure provided by `verl`:
+**The Implementation of compute_online_dpo_loss** adapts the existing PPO infrastructure provided by `verl` based on verl v0.3.0.post1:
 
 * **No Critic:** The value function critic model used in PPO is not required and is omitted.
 * **Reference Model:** An explicit reference policy model (`ref_policy_wg`) is maintained and used in the DPO loss calculation. This implementation allows for periodically updating the reference model's weights from the actor model (controlled by `ref_update_freq`).
@@ -36,6 +25,21 @@ This implementation adapts the existing PPO infrastructure provided by `verl`:
 * **DPO Loss:** The PPO policy loss and advantage calculations are replaced with the DPO loss computation (`compute_online_dpo_loss` in `core_algos.py`) within the actor update step (`dp_actor.py`).
 * **Training Orchestration:** The `SpinTrainer` (in `spin_trainer.py`) manages the training loop: generation, preference labeling, optional reference model updates, and policy updates via the DPO loss.
 
+
+## Algorithm
+
+This recipe implements an Online algorithm adapted to the `verl` Reinforcement Learning framework, which provides an alternative to PPO for fine-tuning language models.
+
+**Online Loop:** Instead of maximizing a scalar reward signal in PPO, this approach directly optimizes the policy model to align with preference data generated *online* during training:
+
+1.  **Generation:** The current model generates multiple responses for each prompt in a batch.
+2.  **Preference Labeling:** A function evaluates these generated responses to determine which one is preferred (chosen) and which is dispreferred (rejected). This can be done using a reward function or implicit ranking based on specific rules. (In this algorithm, we use rule-based ranking on the math problem). 
+3.  **Update:** This preference tuple (`prompt`, `chosen_response`, `rejected_response`) is used to update the actor model using `compute_online_dpo_loss`, comparing against a reference model.
+
+**Connection to SPIN:**
+While this recipe uses compute_online_dpo_loss, the online generation loop is dynamically changing the target data distribution generated by LLM itself using a certain Preference Labeling method (rule-based ranking on the math problem by selecting the better one). This addresses the limitation mentioned in SPIN's paper about exploring "dynamically changing target data distribution" to potentially elevate LLM performance beyond the fixed human-annotated data ceiling.
+
+ 
 ## Reproduce the Experiment (Example Setup)
 
 The following steps outline how to set up the environment and run the SPIN recipe, based on the provided test log using GSM8K and Qwen2.5-3B-Instruct.
@@ -123,8 +127,8 @@ The following steps outline how to set up the environment and run the SPIN recip
 
 ## Key Files
 
-* `main_spin.py`: Main entry point using Hydra to load config and launch the `SpinTrainer`.
-* `spin_trainer.py`: Defines the `SpinTrainer` class orchestrating the Online DPO training loop.
+* `main_spin.py`: Main entry point using Hydra to load the config and launch the `SpinTrainer`.
+* `spin_trainer.py`: Defines the `SpinTrainer` class, orchestrating the Online DPO training loop.
 * `fsdp_workers.py`: Implements Ray workers (Actor, Reference) potentially using FSDP.
 * `dp_actor.py`: Contains the actor class, including the DPO policy update logic.
 * `core_algos.py`: Includes helper functions for `compute_online_dpo_loss` and `compute_onlineDPO_pref`.
@@ -136,6 +140,7 @@ The following steps outline how to set up the environment and run the SPIN recip
 
 We sincerely thank the contribution and guidance from the `verl` community and advisors, including (adapted from SPPO):
 
+-   [Zixaing Chen](https://sites.google.com/view/zxchen)
 -   [Yue Wu](https://yuewu.us/)
 -   [Yuhao Yang](https://github.com/yhyang201)
 -   [Yifan Zhang](https://github.com/yifanzhang-pro)
